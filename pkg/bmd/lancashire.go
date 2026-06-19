@@ -26,11 +26,12 @@ type BirthRecord struct {
 
 // SearchParams contains parameters for searching the BMD index.
 type SearchParams struct {
-	Surname       string
-	Forename      string
-	MaidenSurname string
-	StartYear     int
-	EndYear       int
+	Surname        string
+	Forename       string
+	MaidenSurname  string
+	StartYear      int
+	EndYear        int
+	IgnoreBlankMMN bool
 }
 
 // ParseName splits a full name input into forename and surname.
@@ -130,7 +131,11 @@ func SearchBirths(ctx context.Context, params SearchParams) ([]BirthRecord, erro
 	data.Set("surname", params.Surname)
 	data.Set("initial", params.Forename)
 	data.Set("maiden_surname", params.MaidenSurname)
-	data.Set("ignore_blank_mmn", "no")
+	if params.IgnoreBlankMMN {
+		data.Set("ignore_blank_mmn", "yes")
+	} else {
+		data.Set("ignore_blank_mmn", "no")
+	}
 	data.Set("ignore_flag", "1")
 	data.Set("match", "exact")
 	data.Set("csv_or_list", "file")
@@ -172,6 +177,8 @@ func SearchBirths(ctx context.Context, params SearchParams) ([]BirthRecord, erro
 
 	// Parse CSV
 	csvReader := csv.NewReader(strings.NewReader(csvBuilder.String()))
+	csvReader.FieldsPerRecord = -1
+	csvReader.LazyQuotes = true
 	records, err := csvReader.ReadAll()
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse CSV: %w", err)
@@ -293,6 +300,8 @@ func SearchMarriages(ctx context.Context, params MarriageSearchParams) ([]Marria
 
 	// Parse CSV
 	csvReader := csv.NewReader(strings.NewReader(csvBuilder.String()))
+	csvReader.FieldsPerRecord = -1
+	csvReader.LazyQuotes = true
 	records, err := csvReader.ReadAll()
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse CSV: %w", err)
@@ -341,10 +350,11 @@ type DeathRecord struct {
 
 // DeathSearchParams contains parameters for searching the deaths index.
 type DeathSearchParams struct {
-	Surname   string
-	Forename  string
-	StartYear int
-	EndYear   int
+	Surname     string
+	Forename    string
+	StartYear   int
+	EndYear     int
+	YearOfBirth string
 }
 
 // SearchDeaths performs a search on the Lancashire BMD death indexes.
@@ -370,6 +380,10 @@ func SearchDeaths(ctx context.Context, params DeathSearchParams) ([]DeathRecord,
 	data.Set("search_district", "all")
 	data.Set("surname", params.Surname)
 	data.Set("initial", params.Forename)
+	if params.YearOfBirth != "" {
+		data.Set("age_at_death", params.YearOfBirth)
+		data.Set("plus_minus_val", "1")
+	}
 	data.Set("match", "exact")
 	data.Set("csv_or_list", "file")
 	data.Set("submit", "Display Results")
@@ -410,6 +424,8 @@ func SearchDeaths(ctx context.Context, params DeathSearchParams) ([]DeathRecord,
 
 	// Parse CSV
 	csvReader := csv.NewReader(strings.NewReader(csvBuilder.String()))
+	csvReader.FieldsPerRecord = -1
+	csvReader.LazyQuotes = true
 	records, err := csvReader.ReadAll()
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse CSV: %w", err)

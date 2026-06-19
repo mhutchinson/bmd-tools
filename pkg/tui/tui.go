@@ -77,6 +77,7 @@ type Model struct {
 	persistedYearsBirths    string
 	persistedYearsMarriages string
 	lifeEventsCache         map[string]LifeEventsCacheEntry
+	ignoreBlankMMN          bool
 }
 
 // Styles
@@ -176,11 +177,12 @@ func (m Model) performSearch() tea.Cmd {
 	if m.searchType == TypeBirths {
 		startYear, endYear, _ := bmd.ParseYearRange(yearsVal, 2007)
 		params := bmd.SearchParams{
-			Surname:       surname,
-			Forename:      forename,
-			MaidenSurname: field1Val,
-			StartYear:     startYear,
-			EndYear:       endYear,
+			Surname:        surname,
+			Forename:       forename,
+			MaidenSurname:  field1Val,
+			StartYear:      startYear,
+			EndYear:        endYear,
+			IgnoreBlankMMN: m.ignoreBlankMMN,
 		}
 		return func() tea.Msg {
 			results, err := bmd.SearchBirths(context.Background(), params)
@@ -238,11 +240,17 @@ func searchLifeEventsCmd(r bmd.BirthRecord) tea.Cmd {
 			dEnd = 2009
 		}
 
+		var yob string
+		if by != 0 && r.Year != "" {
+			yob = r.Year
+		}
+
 		dParams := bmd.DeathSearchParams{
-			Surname:   r.Surname,
-			Forename:  r.Forename,
-			StartYear: dStart,
-			EndYear:   dEnd,
+			Surname:     r.Surname,
+			Forename:    r.Forename,
+			StartYear:   dStart,
+			EndYear:     dEnd,
+			YearOfBirth: yob,
 		}
 
 		ctx := context.Background()
@@ -413,6 +421,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						return m, nil
 					}
 					m.persistedYearsBirths = yearsVal
+					m.ignoreBlankMMN = (strings.TrimSpace(field1Val) != "")
 				} else {
 					if strings.TrimSpace(nameVal) == "" {
 						m.err = fmt.Errorf("Name is required")
@@ -476,6 +485,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				}
 				return m, nil
+			case "w":
+				if m.searchType == TypeBirths && strings.TrimSpace(m.searchMaiden) != "" {
+					if m.ignoreBlankMMN {
+						m.ignoreBlankMMN = false
+						m.state = StateLoading
+						m.err = nil
+						return m, tea.Batch(m.spinner.Tick, m.performSearch())
+					}
+				}
+				return m, nil
 			case "up":
 				if m.cursor > 0 {
 					m.cursor--
@@ -496,6 +515,37 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Pivot from birth results to marriage search
 				if m.searchType == TypeBirths && len(m.birthResults) > 0 {
 					r := m.birthResults[m.cursor]
+
+					// Check if we have a cached lookup with exactly one marriage record
+					entry, exists := m.lifeEventsCache[r.Reference]
+					if exists && !entry.loading && entry.marriageErr == nil && len(entry.marriages) == 1 {
+						// Jump directly to the marriage results screen
+						m.searchType = TypeMarriages
+						m.state = StateResults
+						m.marriageResults = entry.marriages
+						m.cursor = 0
+						m.scroll = 0
+
+						// Store search params for the query banner display
+						m.searchName = fmt.Sprintf("%s %s", r.Forename, r.Surname)
+						m.searchMaiden = "" // No spouse name filter applied
+						by, _ := strconv.Atoi(r.Year)
+						if by == 0 {
+							by = 1900
+						}
+						mStart := by + 16
+						mEnd := by + 80
+						if mStart < 1837 {
+							mStart = 1837
+						}
+						if mEnd > 2022 {
+							mEnd = 2022
+						}
+						m.searchYears = fmt.Sprintf("%d-%d", mStart, mEnd)
+						return m, nil
+					}
+
+					// Fallback to the marriage search form
 					by, _ := strconv.Atoi(r.Year)
 					if by == 0 {
 						by = 1900 // Fallback
@@ -523,6 +573,55 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 					for i := range m.inputs {
 						if i == 1 {
+							m.inputs[i].Focus()
+							m.inputs[i].PromptStyle = focusedStyle
+							m.inputs[i].TextStyle = focusedStyle
+						} else {
+							m.inputs[i].Blur()
+							m.inputs[i].PromptStyle = blurredStyle
+							m.inputs[i].TextStyle = blurredStyle
+						}
+					}
+					return m, nil
+				}
+			case "c":
+				// Pivot from marriage results to children (birth) search
+				if m.searchType == TypeMarriages && len(m.marriageResults) > 0 {
+					r := m.marriageResults[m.cursor]
+					wy, _ := strconv.Atoi(r.Year)
+					if wy == 0 {
+						wy = 1920 // Fallback
+					}
+					startYear := wy - 10
+					endYear := wy + 40
+					if startYear < 1837 {
+						startYear = 1837
+					}
+					if endYear > 2007 {
+						endYear = 2007
+					}
+
+					m.searchType = TypeBirths
+					m.state = StateForm
+					m.err = nil
+					m.focusIndex = 0 // Focus name input
+
+					childSurname := r.Surname
+					motherMaiden := r.SpouseSurname
+					if IsCommonFemaleName(r.Forename) {
+						childSurname = r.SpouseSurname
+						motherMaiden = r.Surname
+					}
+
+					m.inputs[0].SetValue(childSurname)
+					m.inputs[0].Placeholder = "John Smith"
+					m.inputs[1].SetValue(motherMaiden)
+					m.inputs[1].Placeholder = "Parker"
+					m.inputs[2].SetValue(fmt.Sprintf("%d-%d", startYear, endYear))
+					m.inputs[2].Placeholder = "1837-2007"
+
+					for i := range m.inputs {
+						if i == 0 {
 							m.inputs[i].Focus()
 							m.inputs[i].PromptStyle = focusedStyle
 							m.inputs[i].TextStyle = focusedStyle
@@ -592,6 +691,29 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+func IsCommonFemaleName(name string) bool {
+	name = strings.ToLower(strings.TrimSpace(name))
+	parts := strings.Fields(name)
+	if len(parts) == 0 {
+		return false
+	}
+	first := parts[0]
+
+	femaleNames := map[string]bool{
+		"mary": true, "elizabeth": true, "sarah": true, "margaret": true,
+		"jane": true, "ann": true, "anne": true, "annie": true,
+		"alice": true, "florence": true, "emily": true, "eliza": true,
+		"ellen": true, "helen": true, "martha": true, "dorothy": true,
+		"ada": true, "clara": true, "hannah": true, "edith": true,
+		"louisa": true, "rose": true, "grace": true, "lily": true,
+		"ruth": true, "maud": true, "harriet": true, "beatrice": true,
+		"ethel": true, "elsie": true, "hilda": true, "agnes": true,
+		"doris": true, "lilian": true, "gertrude": true, "gladys": true,
+		"marjorie": true, "nellie": true, "bertha": true,
+	}
+	return femaleNames[first]
 }
 
 func pad(s string, width int) string {
@@ -685,10 +807,22 @@ func (m Model) View() string {
 		if m.searchType == TypeMarriages {
 			queryLabel = "Spouse Name"
 		}
-		s.WriteString(helpStyle.Render(fmt.Sprintf("Query: Name=%q, %s=%q, Years=%q", m.searchName, queryLabel, m.searchMaiden, m.searchYears)) + "\n\n")
+		queryDetails := fmt.Sprintf("Query: Name=%q, %s=%q, Years=%q", m.searchName, queryLabel, m.searchMaiden, m.searchYears)
+		if m.searchType == TypeBirths && strings.TrimSpace(m.searchMaiden) != "" {
+			if m.ignoreBlankMMN {
+				queryDetails += " (Ignoring blank MMN)"
+			} else {
+				queryDetails += " (Including blank MMN)"
+			}
+		}
+		s.WriteString(helpStyle.Render(queryDetails) + "\n\n")
 
 		if resultsLen == 0 {
-			s.WriteString(borderStyle.Render("No records matching the search criteria were found.\n\nPress [esc] to search again."))
+			msg := "No records matching the search criteria were found.\n\nPress [esc] to search again."
+			if m.searchType == TypeBirths && strings.TrimSpace(m.searchMaiden) != "" && m.ignoreBlankMMN {
+				msg = "No records matching the search criteria were found.\n\nPress [esc] to search again, or [w] to widen search (include blank MMN)."
+			}
+			s.WriteString(borderStyle.Render(msg))
 			return s.String()
 		}
 
@@ -830,7 +964,11 @@ func (m Model) View() string {
 
 				s.WriteString(borderStyle.BorderForeground(lavender).Render(detail.String()) + "\n")
 			}
-			s.WriteString(helpStyle.Render("[↑/↓] Navigate  [enter] Find Marriages/Deaths  [m] Pivot to Marriage Search  [esc] Search again  [q] Quit"))
+			helpText := "[↑/↓] Navigate  [enter] Find Marriages/Deaths  [m] Pivot to Marriage Search  [esc] Search again  [q] Quit"
+			if strings.TrimSpace(m.searchMaiden) != "" && m.ignoreBlankMMN {
+				helpText += "  [w] Widen Search (incl. blank MMN)"
+			}
+			s.WriteString(helpStyle.Render(helpText))
 		} else {
 			if m.cursor < len(m.marriageResults) {
 				r := m.marriageResults[m.cursor]
@@ -845,7 +983,7 @@ func (m Model) View() string {
 
 				s.WriteString(borderStyle.BorderForeground(lavender).Render(detail.String()) + "\n")
 			}
-			s.WriteString(helpStyle.Render("[↑/↓] Navigate  [esc] Search again  [q] Quit"))
+			s.WriteString(helpStyle.Render("[↑/↓] Navigate  [c] Find Children (Birth Search)  [esc] Search again  [q] Quit"))
 		}
 
 	case StateError:
