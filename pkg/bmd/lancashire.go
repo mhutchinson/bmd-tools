@@ -32,6 +32,7 @@ type SearchParams struct {
 	StartYear      int
 	EndYear        int
 	IgnoreBlankMMN bool
+	Site           string
 }
 
 // ParseName splits a full name input into forename and surname.
@@ -117,9 +118,16 @@ func SearchBirths(ctx context.Context, params SearchParams) ([]BirthRecord, erro
 		return nil, fmt.Errorf("invalid year range: %d-%d", params.StartYear, params.EndYear)
 	}
 
+	site := params.Site
+	if site == "" {
+		site = "lancashire"
+	}
+	host := fmt.Sprintf("www.%sbmd.org.uk", site)
+	urlStr := fmt.Sprintf("https://%s/birthsearch.php", host)
+
 	// Prepare POST data
 	data := url.Values{}
-	data.Set("county", "lancashire")
+	data.Set("county", site)
 	data.Set("lang", "")
 	for y := params.StartYear; y <= params.EndYear; y++ {
 		data.Add("year_date[]", strconv.Itoa(y))
@@ -142,7 +150,7 @@ func SearchBirths(ctx context.Context, params SearchParams) ([]BirthRecord, erro
 	data.Set("submit", "Display Results")
 
 	// Construct request
-	req, err := http.NewRequestWithContext(ctx, "POST", "https://www.lancashirebmd.org.uk/birthsearch.php", strings.NewReader(data.Encode()))
+	req, err := http.NewRequestWithContext(ctx, "POST", urlStr, strings.NewReader(data.Encode()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -233,6 +241,7 @@ type MarriageSearchParams struct {
 	SpouseForename string
 	StartYear      int
 	EndYear        int
+	Site           string
 }
 
 // SearchMarriages performs a search on the Lancashire BMD marriage indexes.
@@ -245,9 +254,16 @@ func SearchMarriages(ctx context.Context, params MarriageSearchParams) ([]Marria
 		return nil, fmt.Errorf("invalid year range: %d-%d", params.StartYear, params.EndYear)
 	}
 
+	site := params.Site
+	if site == "" {
+		site = "lancashire"
+	}
+	host := fmt.Sprintf("www.%sbmd.org.uk", site)
+	urlStr := fmt.Sprintf("https://%s/marriagesearch.php", host)
+
 	// Prepare POST data
 	data := url.Values{}
-	data.Set("county", "lancashire")
+	data.Set("county", site)
 	data.Set("lang", "")
 	for y := params.StartYear; y <= params.EndYear; y++ {
 		data.Add("year_date[]", strconv.Itoa(y))
@@ -265,7 +281,7 @@ func SearchMarriages(ctx context.Context, params MarriageSearchParams) ([]Marria
 	data.Set("submit", "Display Results")
 
 	// Construct request
-	req, err := http.NewRequestWithContext(ctx, "POST", "https://www.lancashirebmd.org.uk/marriagesearch.php", strings.NewReader(data.Encode()))
+	req, err := http.NewRequestWithContext(ctx, "POST", urlStr, strings.NewReader(data.Encode()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -355,6 +371,7 @@ type DeathSearchParams struct {
 	StartYear   int
 	EndYear     int
 	YearOfBirth string
+	Site        string
 }
 
 // SearchDeaths performs a search on the Lancashire BMD death indexes.
@@ -367,9 +384,16 @@ func SearchDeaths(ctx context.Context, params DeathSearchParams) ([]DeathRecord,
 		return nil, fmt.Errorf("invalid year range: %d-%d", params.StartYear, params.EndYear)
 	}
 
+	site := params.Site
+	if site == "" {
+		site = "lancashire"
+	}
+	host := fmt.Sprintf("www.%sbmd.org.uk", site)
+	urlStr := fmt.Sprintf("https://%s/deathsearch.php", host)
+
 	// Prepare POST data
 	data := url.Values{}
-	data.Set("county", "lancashire")
+	data.Set("county", site)
 	data.Set("lang", "")
 	for y := params.StartYear; y <= params.EndYear; y++ {
 		data.Add("year_date[]", strconv.Itoa(y))
@@ -389,7 +413,7 @@ func SearchDeaths(ctx context.Context, params DeathSearchParams) ([]DeathRecord,
 	data.Set("submit", "Display Results")
 
 	// Construct request
-	req, err := http.NewRequestWithContext(ctx, "POST", "https://www.lancashirebmd.org.uk/deathsearch.php", strings.NewReader(data.Encode()))
+	req, err := http.NewRequestWithContext(ctx, "POST", urlStr, strings.NewReader(data.Encode()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}

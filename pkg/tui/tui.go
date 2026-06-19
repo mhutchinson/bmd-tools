@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -78,6 +79,7 @@ type Model struct {
 	persistedYearsMarriages string
 	lifeEventsCache         map[string]LifeEventsCacheEntry
 	ignoreBlankMMN          bool
+	searchSites             []string
 }
 
 // Styles
@@ -160,6 +162,7 @@ func NewModel() Model {
 		persistedYearsBirths:    "1837-2007",
 		persistedYearsMarriages: "1837-2022",
 		lifeEventsCache:         make(map[string]LifeEventsCacheEntry),
+		searchSites:             []string{"lancashire"},
 	}
 }
 
@@ -176,32 +179,96 @@ func (m Model) performSearch() tea.Cmd {
 
 	if m.searchType == TypeBirths {
 		startYear, endYear, _ := bmd.ParseYearRange(yearsVal, 2007)
-		params := bmd.SearchParams{
-			Surname:        surname,
-			Forename:       forename,
-			MaidenSurname:  field1Val,
-			StartYear:      startYear,
-			EndYear:        endYear,
-			IgnoreBlankMMN: m.ignoreBlankMMN,
-		}
 		return func() tea.Msg {
-			results, err := bmd.SearchBirths(context.Background(), params)
-			return searchBirthsMsg{results: results, err: err}
+			var allResults []bmd.BirthRecord
+			var errs []string
+
+			type chanResult struct {
+				results []bmd.BirthRecord
+				err     error
+				site    string
+			}
+			ch := make(chan chanResult, len(m.searchSites))
+			for _, site := range m.searchSites {
+				go func(s string) {
+					params := bmd.SearchParams{
+						Surname:        surname,
+						Forename:       forename,
+						MaidenSurname:  field1Val,
+						StartYear:      startYear,
+						EndYear:        endYear,
+						IgnoreBlankMMN: m.ignoreBlankMMN,
+						Site:           s,
+					}
+					res, err := bmd.SearchBirths(context.Background(), params)
+					ch <- chanResult{results: res, err: err, site: s}
+				}(site)
+			}
+
+			for i := 0; i < len(m.searchSites); i++ {
+				r := <-ch
+				if r.err != nil {
+					errs = append(errs, fmt.Sprintf("%s: %v", r.site, r.err))
+				} else {
+					allResults = append(allResults, r.results...)
+				}
+			}
+
+			var finalErr error
+			if len(errs) > 0 {
+				finalErr = fmt.Errorf("errors querying sites: %s", strings.Join(errs, "; "))
+			}
+
+			SortBirthRecords(allResults)
+
+			return searchBirthsMsg{results: allResults, err: finalErr}
 		}
 	} else {
 		spouseForename, spouseSurname := bmd.ParseName(field1Val)
 		startYear, endYear, _ := bmd.ParseYearRange(yearsVal, 2022)
-		params := bmd.MarriageSearchParams{
-			Surname:        surname,
-			Forename:       forename,
-			SpouseSurname:  spouseSurname,
-			SpouseForename: spouseForename,
-			StartYear:      startYear,
-			EndYear:        endYear,
-		}
 		return func() tea.Msg {
-			results, err := bmd.SearchMarriages(context.Background(), params)
-			return searchMarriagesMsg{results: results, err: err}
+			var allResults []bmd.MarriageRecord
+			var errs []string
+
+			type chanResult struct {
+				results []bmd.MarriageRecord
+				err     error
+				site    string
+			}
+			ch := make(chan chanResult, len(m.searchSites))
+			for _, site := range m.searchSites {
+				go func(s string) {
+					params := bmd.MarriageSearchParams{
+						Surname:        surname,
+						Forename:       forename,
+						SpouseSurname:  spouseSurname,
+						SpouseForename: spouseForename,
+						StartYear:      startYear,
+						EndYear:        endYear,
+						Site:           s,
+					}
+					res, err := bmd.SearchMarriages(context.Background(), params)
+					ch <- chanResult{results: res, err: err, site: s}
+				}(site)
+			}
+
+			for i := 0; i < len(m.searchSites); i++ {
+				r := <-ch
+				if r.err != nil {
+					errs = append(errs, fmt.Sprintf("%s: %v", r.site, r.err))
+				} else {
+					allResults = append(allResults, r.results...)
+				}
+			}
+
+			var finalErr error
+			if len(errs) > 0 {
+				finalErr = fmt.Errorf("errors querying sites: %s", strings.Join(errs, "; "))
+			}
+
+			SortMarriageRecords(allResults)
+
+			return searchMarriagesMsg{results: allResults, err: finalErr}
 		}
 	}
 }
@@ -443,6 +510,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.searchName = nameVal
 				m.searchMaiden = field1Val
 				m.searchYears = yearsVal
+				m.searchSites = []string{"lancashire"}
 
 				m.state = StateLoading
 				m.err = nil
@@ -493,6 +561,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.err = nil
 						return m, tea.Batch(m.spinner.Tick, m.performSearch())
 					}
+				}
+				return m, nil
+			case "a":
+				if len(m.searchSites) < 3 {
+					m.searchSites = []string{"lancashire", "cheshire", "cumbria"}
+					m.state = StateLoading
+					m.err = nil
+					return m, tea.Batch(m.spinner.Tick, m.performSearch())
 				}
 				return m, nil
 			case "up":
@@ -807,7 +883,18 @@ func (m Model) View() string {
 		if m.searchType == TypeMarriages {
 			queryLabel = "Spouse Name"
 		}
-		queryDetails := fmt.Sprintf("Query: Name=%q, %s=%q, Years=%q", m.searchName, queryLabel, m.searchMaiden, m.searchYears)
+		sitesStr := "Lancashire"
+		if len(m.searchSites) == 3 {
+			sitesStr = "All NW"
+		} else if len(m.searchSites) == 1 {
+			switch m.searchSites[0] {
+			case "cheshire":
+				sitesStr = "Cheshire"
+			case "cumbria":
+				sitesStr = "Cumbria"
+			}
+		}
+		queryDetails := fmt.Sprintf("Query: Name=%q, %s=%q, Years=%q, Site=%s", m.searchName, queryLabel, m.searchMaiden, m.searchYears, sitesStr)
 		if m.searchType == TypeBirths && strings.TrimSpace(m.searchMaiden) != "" {
 			if m.ignoreBlankMMN {
 				queryDetails += " (Ignoring blank MMN)"
@@ -818,9 +905,22 @@ func (m Model) View() string {
 		s.WriteString(helpStyle.Render(queryDetails) + "\n\n")
 
 		if resultsLen == 0 {
-			msg := "No records matching the search criteria were found.\n\nPress [esc] to search again."
+			var options []string
+			options = append(options, "[esc] to search again")
 			if m.searchType == TypeBirths && strings.TrimSpace(m.searchMaiden) != "" && m.ignoreBlankMMN {
-				msg = "No records matching the search criteria were found.\n\nPress [esc] to search again, or [w] to widen search (include blank MMN)."
+				options = append(options, "[w] to widen search (include blank MMN)")
+			}
+			if len(m.searchSites) < 3 {
+				options = append(options, "[a] to widen to All NW")
+			}
+
+			var msg string
+			if len(options) == 1 {
+				msg = fmt.Sprintf("No records matching the search criteria were found.\n\nPress %s.", options[0])
+			} else if len(options) == 2 {
+				msg = fmt.Sprintf("No records matching the search criteria were found.\n\nPress %s, or %s.", options[0], options[1])
+			} else {
+				msg = fmt.Sprintf("No records matching the search criteria were found.\n\nPress %s, %s, or %s.", options[0], options[1], options[2])
 			}
 			s.WriteString(borderStyle.Render(msg))
 			return s.String()
@@ -966,7 +1066,10 @@ func (m Model) View() string {
 			}
 			helpText := "[↑/↓] Navigate  [enter] Find Marriages/Deaths  [m] Pivot to Marriage Search  [esc] Search again  [q] Quit"
 			if strings.TrimSpace(m.searchMaiden) != "" && m.ignoreBlankMMN {
-				helpText += "  [w] Widen Search (incl. blank MMN)"
+				helpText += "  [w] Widen MMN"
+			}
+			if len(m.searchSites) < 3 {
+				helpText += "  [a] Widen to All NW"
 			}
 			s.WriteString(helpStyle.Render(helpText))
 		} else {
@@ -983,7 +1086,11 @@ func (m Model) View() string {
 
 				s.WriteString(borderStyle.BorderForeground(lavender).Render(detail.String()) + "\n")
 			}
-			s.WriteString(helpStyle.Render("[↑/↓] Navigate  [c] Find Children (Birth Search)  [esc] Search again  [q] Quit"))
+			helpText := "[↑/↓] Navigate  [c] Find Children (Birth Search)  [esc] Search again  [q] Quit"
+			if len(m.searchSites) < 3 {
+				helpText += "  [a] Widen to All NW"
+			}
+			s.WriteString(helpStyle.Render(helpText))
 		}
 
 	case StateError:
@@ -995,4 +1102,28 @@ func (m Model) View() string {
 	}
 
 	return s.String()
+}
+
+func SortBirthRecords(records []bmd.BirthRecord) {
+	sort.Slice(records, func(i, j int) bool {
+		if records[i].Year != records[j].Year {
+			return records[i].Year < records[j].Year
+		}
+		if records[i].Surname != records[j].Surname {
+			return records[i].Surname < records[j].Surname
+		}
+		return records[i].Forename < records[j].Forename
+	})
+}
+
+func SortMarriageRecords(records []bmd.MarriageRecord) {
+	sort.Slice(records, func(i, j int) bool {
+		if records[i].Year != records[j].Year {
+			return records[i].Year < records[j].Year
+		}
+		if records[i].Surname != records[j].Surname {
+			return records[i].Surname < records[j].Surname
+		}
+		return records[i].Forename < records[j].Forename
+	})
 }

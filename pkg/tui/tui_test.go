@@ -60,3 +60,41 @@ func TestIgnoreBlankMMN(t *testing.T) {
 		t.Errorf("Expected state to transition to StateLoading, got %v", updatedModel3.state)
 	}
 }
+
+func TestWidenAllNWSites(t *testing.T) {
+	// Initialize TUI in Results state with only Lancashire as search target
+	m := NewModel()
+	m.searchType = TypeBirths
+	m.state = StateResults
+	m.searchName = "John Smith"
+	m.searchYears = "1900-1910"
+	m.searchSites = []string{"lancashire"}
+
+	// Verify initial state
+	if len(m.searchSites) != 1 || m.searchSites[0] != "lancashire" {
+		t.Fatalf("Expected initial search site to be 'lancashire', got %v", m.searchSites)
+	}
+
+	// Trigger 'a' key press
+	resModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	updatedModel := resModel.(Model)
+
+	// Verify widened search sites
+	if len(updatedModel.searchSites) != 3 {
+		t.Errorf("Expected searchSites to contain 3 elements, got %d", len(updatedModel.searchSites))
+	}
+	expectedSites := map[string]bool{"lancashire": true, "cheshire": true, "cumbria": true}
+	for _, site := range updatedModel.searchSites {
+		if !expectedSites[site] {
+			t.Errorf("Unexpected site in search list: %s", site)
+		}
+	}
+
+	// Verify state and command trigger
+	if cmd == nil {
+		t.Errorf("Expected a non-nil search command when pressing 'a'")
+	}
+	if updatedModel.state != StateLoading {
+		t.Errorf("Expected state to transition to StateLoading, got %v", updatedModel.state)
+	}
+}
