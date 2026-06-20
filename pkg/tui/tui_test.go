@@ -80,10 +80,10 @@ func TestWidenAllNWSites(t *testing.T) {
 	updatedModel := resModel.(Model)
 
 	// Verify widened search sites
-	if len(updatedModel.searchSites) != 3 {
-		t.Errorf("Expected searchSites to contain 3 elements, got %d", len(updatedModel.searchSites))
+	if len(updatedModel.searchSites) != 4 {
+		t.Errorf("Expected searchSites to contain 4 elements, got %d", len(updatedModel.searchSites))
 	}
-	expectedSites := map[string]bool{"lancashire": true, "cheshire": true, "cumbria": true}
+	expectedSites := map[string]bool{"lancashire": true, "cheshire": true, "cumbria": true, "yorkshire": true}
 	for _, site := range updatedModel.searchSites {
 		if !expectedSites[site] {
 			t.Errorf("Unexpected site in search list: %s", site)

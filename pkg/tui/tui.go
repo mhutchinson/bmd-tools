@@ -564,8 +564,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, nil
 			case "a":
-				if len(m.searchSites) < 3 {
-					m.searchSites = []string{"lancashire", "cheshire", "cumbria"}
+				if len(m.searchSites) < 4 {
+					m.searchSites = []string{"lancashire", "cheshire", "cumbria", "yorkshire"}
 					m.state = StateLoading
 					m.err = nil
 					return m, tea.Batch(m.spinner.Tick, m.performSearch())
@@ -884,14 +884,16 @@ func (m Model) View() string {
 			queryLabel = "Spouse Name"
 		}
 		sitesStr := "Lancashire"
-		if len(m.searchSites) == 3 {
-			sitesStr = "All NW"
+		if len(m.searchSites) == 4 {
+			sitesStr = "All NW + Yorks"
 		} else if len(m.searchSites) == 1 {
 			switch m.searchSites[0] {
 			case "cheshire":
 				sitesStr = "Cheshire"
 			case "cumbria":
 				sitesStr = "Cumbria"
+			case "yorkshire":
+				sitesStr = "Yorkshire"
 			}
 		}
 		queryDetails := fmt.Sprintf("Query: Name=%q, %s=%q, Years=%q, Site=%s", m.searchName, queryLabel, m.searchMaiden, m.searchYears, sitesStr)
@@ -910,8 +912,8 @@ func (m Model) View() string {
 			if m.searchType == TypeBirths && strings.TrimSpace(m.searchMaiden) != "" && m.ignoreBlankMMN {
 				options = append(options, "[w] to widen search (include blank MMN)")
 			}
-			if len(m.searchSites) < 3 {
-				options = append(options, "[a] to widen to All NW")
+			if len(m.searchSites) < 4 {
+				options = append(options, "[a] to widen to All NW + Yorks")
 			}
 
 			var msg string
@@ -1068,8 +1070,8 @@ func (m Model) View() string {
 			if strings.TrimSpace(m.searchMaiden) != "" && m.ignoreBlankMMN {
 				helpText += "  [w] Widen MMN"
 			}
-			if len(m.searchSites) < 3 {
-				helpText += "  [a] Widen to All NW"
+			if len(m.searchSites) < 4 {
+				helpText += "  [a] Widen to All NW + Yorks"
 			}
 			s.WriteString(helpStyle.Render(helpText))
 		} else {
@@ -1087,8 +1089,8 @@ func (m Model) View() string {
 				s.WriteString(borderStyle.BorderForeground(lavender).Render(detail.String()) + "\n")
 			}
 			helpText := "[↑/↓] Navigate  [c] Find Children (Birth Search)  [esc] Search again  [q] Quit"
-			if len(m.searchSites) < 3 {
-				helpText += "  [a] Widen to All NW"
+			if len(m.searchSites) < 4 {
+				helpText += "  [a] Widen to All NW + Yorks"
 			}
 			s.WriteString(helpStyle.Render(helpText))
 		}

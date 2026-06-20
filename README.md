@@ -2,10 +2,11 @@
 
 A terminal user interface (TUI) client for searching and pivot-analyzing Birth, Marriage, and Death (BMD) records from regional UKBMD local databases. Built in Go using the Bubble Tea framework.
 
-Currently supports querying three major sites in the North West of England in parallel:
+Currently supports querying four major sites in northern/north-west England in parallel:
 - **Lancashire BMD** (`lancashirebmd.org.uk`)
 - **Cheshire BMD** (`cheshirebmd.org.uk`)
 - **Cumbria BMD** (`cumbriabmd.org.uk`)
+- **Yorkshire BMD** (`yorkshirebmd.org.uk`)
 
 ## Features
 
@@ -20,7 +21,7 @@ Currently supports querying three major sites in the North West of England in pa
 
 ### 3. Multi-County Search Scope (`a`)
 - Searches default to the local **Lancashire BMD** index.
-- Press **`a`** on any birth or marriage results page to immediately widen the query and run it across all three North West regional databases (**Lancashire**, **Cheshire**, and **Cumbria**) in parallel. Results are automatically merged, sorted, and presented in a single unified view.
+- Press **`a`** on any birth or marriage results page to immediately widen the query and run it across all four databases (**Lancashire**, **Cheshire**, **Cumbria**, and **Yorkshire**) in parallel. Results are automatically merged, sorted, and presented in a single unified view.
 
 ### 4. Automatic Life Event Checking
 - Pressing `Enter` on any birth record automatically searches marriages (16-80 years after birth) and deaths (up to 110 years after birth).
@@ -71,14 +72,14 @@ go run main.go
 | | `Enter` (on Birth) | Fetch matches for marriages and deaths |
 | | `m` (on Birth) | Pivot to marriage search |
 | | `w` (on Birth) | Widen search to include blank Mother's Maiden Name records |
-| | `a` (on Birth/Marriage)| Widen search scope across all North West databases (Lancashire, Cheshire, Cumbria) |
+| | `a` (on Birth/Marriage)| Widen search scope across all supported databases (Lancashire, Cheshire, Cumbria, Yorkshire) |
 | | `c` (on Marriage) | Pivot to searching for children of the marriage |
 
 ---
 
 ## Limitations
 
-- **Source Specific**: Designed for querying Lancashire, Cheshire, and Cumbria BMD databases. It will not retrieve records from other counties or the national General Register Office (GRO) databases.
+- **Source Specific**: Designed for querying Lancashire, Cheshire, Cumbria, and Yorkshire BMD databases. It will not retrieve records from other counties or the national General Register Office (GRO) databases.
 - **Date Boundaries**:
   - Birth searches are restricted to 1837-2007.
   - Marriage searches are restricted to 1837-2022.
